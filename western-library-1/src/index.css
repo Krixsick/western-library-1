@@ -12,3 +12,16 @@ body {
   --color-secondary: #3e2723;
   --color-tertiary: #d7ccc8;
 }
+
+/* Mapbox popup styling */
+.library-popup .mapboxgl-popup-content {
+  background: #1a1a1b;
+  border: 1px solid #3e2723;
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.library-popup .mapboxgl-popup-tip {
+  border-top-color: #1a1a1b;
+}
