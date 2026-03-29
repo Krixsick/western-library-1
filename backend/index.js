@@ -1,7 +1,9 @@
 const express = require("express");
+const cors = require("cors");
 const app = express();
 const libraryRouter = require("./libraryTime");
 
+app.use(cors());
 app.use("/api/library", libraryRouter);
 
 app.get("/", (req, res) => {

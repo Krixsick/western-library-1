@@ -101,7 +101,7 @@ export function Map() {
           closeOnClick: false,
           className: "library-popup",
         }).setHTML(
-          `<div style="font-size:13px;font-weight:600;color:#fff;padding:2px 4px;">
+          `<div style="font-size:13px;font-weight:600;color:"#000000ff";padding:2px 4px;">
             ${lib.name}
             <span style="color:${isOpen ? "#22c55e" : "#ef4444"};margin-left:6px;">
               ${isOpen ? "Open" : "Closed"}
@@ -123,24 +123,6 @@ export function Map() {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-
-    const markers: mapboxgl.Marker[] = [];
-
-    libraries.forEach((lib) => {
-      const isOpen = isLibraryOpen(lib);
-      // ... same marker creation code ...
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([lib.log, lib.lat])
-        .addTo(map);
-      markers.push(marker);
-    });
-
-    return () => markers.forEach((m) => m.remove());
   }, [libraries]);
 
   return (

@@ -11,9 +11,11 @@ const DAYS = [
   "Saturday",
 ];
 export function isLibraryOpen(library: Library): boolean {
+  console.log(library);
+  if (!library.hours) return false;
   const now = new Date();
   const day = DAYS[now.getDay()];
-  const hours = library?.hours[day];
+  const hours = library.hours[day];
   if (!hours) return false;
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
