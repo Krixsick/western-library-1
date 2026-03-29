@@ -10,5 +10,5 @@ export interface Library {
   log: number;
   rating: number;
   image?: string;
-  hours?: Record<string, LibraryHours | null>;
+  hours?: Record<string, string | null>;
 }

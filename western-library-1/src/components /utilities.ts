@@ -11,24 +11,40 @@ const DAYS = [
   "Saturday",
 ];
 export function isLibraryOpen(library: Library): boolean {
-  console.log(library);
   if (!library.hours) return false;
+
   const now = new Date();
   const day = DAYS[now.getDay()];
   const hours = library.hours[day];
   if (!hours) return false;
 
+  // hours is a string like "9am – 11pm"
+  const parts = hours.split(/\s*[–-]\s*/);
+  if (parts.length !== 2) return false;
+
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const [openH, openM] = hours.open.split(":").map(Number);
-  const [closeH, closeM] = hours.close.split(":").map(Number);
-  const openMinutes = openH * 60 + openM;
-  const closeMinutes = closeH * 60 + closeM;
+  const openMinutes = parseTimeToMinutes(parts[0]);
+  const closeMinutes = parseTimeToMinutes(parts[1]);
+
+  if (openMinutes === null || closeMinutes === null) return false;
 
   return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
 }
 
-export function useLibraries(): Library[] {
-  const [libs, setLibs] = useState<Library[]>(libraries);
+function parseTimeToMinutes(timeStr: string): number | null {
+  const match = timeStr.trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (!match) return null;
+  let h = parseInt(match[1]);
+  const m = match[2] ? parseInt(match[2]) : 0;
+  const period = match[3].toLowerCase();
+  if (period === "pm" && h !== 12) h += 12;
+  if (period === "am" && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+export function useLibraries() {
+  const [libs, setLibs] = useState(libraries);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     async function fetchHours() {
       try {
@@ -45,11 +61,13 @@ export function useLibraries(): Library[] {
         );
       } catch (err) {
         console.error("Failed to fetch hours:", err);
+      } finally {
+        setLoading(false);
       }
     }
 
     fetchHours();
   }, []);
 
-  return libs;
+  return { libraries: libs, loading };
 }

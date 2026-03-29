@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { isLibraryOpen, useLibraries } from "./utilities";
+import type { Library } from "../types/library";
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER: [number, number] = [-81.2737, 43.0096];
 const DEFAULT_ZOOM = 15.5;
@@ -11,7 +12,7 @@ const DEFAULT_BEARING = 30;
 export function Map() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const libraries = useLibraries();
+  const { libraries, loading } = useLibraries();
   const resetMap = useCallback(() => {
     mapRef.current?.flyTo({
       center: DEFAULT_CENTER,
@@ -57,13 +58,29 @@ export function Map() {
 
     mapRef.current = map;
 
+    // Create a div to display coordinates
+    const coordDisplay = document.createElement("div");
+    coordDisplay.style.cssText =
+      "position:absolute;bottom:12px;left:12px;z-index:10;background:#1a1a1b99;backdrop-filter:blur(8px);color:#d7ccc8;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace;pointer-events:none;opacity:0;transition:opacity 0.2s;";
+
+    map.on("mousemove", (e) => {
+      const { lng, lat } = e.lngLat;
+      coordDisplay.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      coordDisplay.style.opacity = "1";
+    });
+
+    map.on("click", (e) => {
+      const { lng, lat } = e.lngLat;
+      console.log(`lat: ${lat}, lng: ${lng}`);
+    });
+
     map.on("style.load", () => {
       // Configure Standard style for dark theme with 3D buildings
       map.setConfigProperty("basemap", "lightPreset", "dusk");
       map.setConfigProperty("basemap", "showPointOfInterestLabels", false);
 
       // Add library markers
-      libraries.forEach((lib) => {
+      libraries.forEach((lib: Library) => {
         const isOpen = isLibraryOpen(lib);
 
         // Create custom marker element
@@ -124,6 +141,16 @@ export function Map() {
       mapRef.current = null;
     };
   }, [libraries]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-background">
+        <p className="text-tertiary text-sm animate-pulse">
+          Loading library hours...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full">
