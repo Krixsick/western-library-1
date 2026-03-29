@@ -1,0 +1,60 @@
+import type { Library } from "../types/library";
+
+export const libraries: Library[] = [
+  {
+    id: "archives",
+    name: "Archives and Research Collections Centre",
+    lat: 43.0101,
+    log: -81.2801,
+    rating: 4.5,
+    image: "",
+  },
+  {
+    id: "weldon",
+    name: "Weldon Library",
+    lat: 43.0088,
+    log: -81.2742,
+    rating: 4.2,
+    image: "",
+  },
+  {
+    id: "taylor",
+    name: "Allyn & Betty Taylor Library",
+    lat: 43.0094,
+    log: -81.2668,
+    rating: 4.3,
+    image: "",
+  },
+  {
+    id: "music",
+    name: "Music Library",
+    lat: 43.0099,
+    log: -81.2761,
+    rating: 5.0,
+    image: "",
+  },
+  {
+    id: "education",
+    name: "Education Library",
+    lat: 43.0112,
+    log: -81.2717,
+    rating: 4.5,
+    image: "",
+  },
+  {
+    id: "law",
+    name: "John & Dotsa Chicken Law Library",
+    lat: 43.0072,
+    log: -81.2748,
+    rating: 4.3,
+    image: "",
+  },
+  {
+    id: "business",
+    name: "Business Library (Ivey)",
+    lat: 43.0052,
+    log: -81.2756,
+    rating: 4.7,
+    image: "",
+  },
+];
