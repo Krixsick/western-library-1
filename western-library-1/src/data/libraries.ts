@@ -1,4 +1,13 @@
 import type { Library } from "../types/library";
+import type { Residence } from "../types/residence";
+export const recCenter = {
+  id: "rec-center",
+  name: "Western Student Recreation Centre",
+  lat: 43.00297,
+  log: -81.27523,
+};
+
+export const residences: Residence[] = [{}];
 
 export const libraries: Library[] = [
   {

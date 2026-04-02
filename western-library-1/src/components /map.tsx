@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { isLibraryOpen, useLibraries } from "./utilities";
+import { isLibraryOpen, useLibraries, useRecBusyness } from "./utilities";
 import type { Library } from "../types/library";
+import { recCenter } from "../data/libraries";
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER: [number, number] = [-81.2737, 43.0096];
 const DEFAULT_ZOOM = 15.5;
@@ -13,6 +14,7 @@ export function Map() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { libraries, loading } = useLibraries();
+  const { busyness } = useRecBusyness();
   const resetMap = useCallback(() => {
     mapRef.current?.flyTo({
       center: DEFAULT_CENTER,
@@ -134,13 +136,80 @@ export function Map() {
         el.addEventListener("mouseenter", () => popup.addTo(map));
         el.addEventListener("mouseleave", () => popup.remove());
       });
+
+      // Add rec center marker
+      const busynessColors: Record<string, string> = {
+        low: "#22c55e",
+        moderate: "#f59e0b",
+        busy: "#ef4444",
+        unknown: "#6b7280",
+      };
+
+      const level = busyness?.busynessLevel || "unknown";
+      const color = busynessColors[level];
+
+      const recEl = document.createElement("div");
+      recEl.style.width = "20px";
+      recEl.style.height = "20px";
+      recEl.style.borderRadius = "4px";
+      recEl.style.cursor = "pointer";
+      recEl.style.border = "2px solid white";
+      recEl.style.backgroundColor = color;
+      recEl.style.boxShadow = `0 0 10px ${color}, 0 0 20px ${color}80`;
+
+      recEl.addEventListener("click", () => {
+        map.flyTo({
+          center: [recCenter.log, recCenter.lat],
+          zoom: 17,
+          pitch: 55,
+          bearing: DEFAULT_BEARING,
+          duration: 1500,
+        });
+      });
+
+      const levelLabel = level.charAt(0).toUpperCase() + level.slice(1);
+      const areas: string[] = [];
+      if (busyness?.weightRoom != null) areas.push(`Weight Room: ${busyness.weightRoom}`);
+      if (busyness?.cardioMezzanine != null) areas.push(`Cardio: ${busyness.cardioMezzanine}`);
+      if (busyness?.spinRoom != null) areas.push(`Spin: ${busyness.spinRoom}`);
+
+      let updatedText = "";
+      if (busyness?.lastUpdated) {
+        const ago = Math.round((Date.now() - new Date(busyness.lastUpdated).getTime()) / 60000);
+        updatedText = ago < 1 ? "Just now" : `${ago} min ago`;
+      }
+
+      const recPopup = new mapboxgl.Popup({
+        offset: 14,
+        closeButton: false,
+        closeOnClick: false,
+        className: "library-popup",
+      }).setHTML(
+        `<div style="font-size:13px;padding:2px 4px;">
+          <div style="font-weight:600;">${recCenter.name}</div>
+          <div style="margin-top:4px;">
+            <span style="color:${color};font-weight:600;">${levelLabel}</span>
+            ${busyness?.totalOccupancy != null ? `<span style="color:#888;margin-left:6px;">${busyness.totalOccupancy} people</span>` : ""}
+          </div>
+          ${areas.length > 0 ? `<div style="font-size:11px;color:#888;margin-top:2px;">${areas.join(" · ")}</div>` : ""}
+          ${updatedText ? `<div style="font-size:10px;color:#aaa;margin-top:2px;">Updated ${updatedText}</div>` : ""}
+        </div>`,
+      );
+
+      new mapboxgl.Marker({ element: recEl })
+        .setLngLat([recCenter.log, recCenter.lat])
+        .setPopup(recPopup)
+        .addTo(map);
+
+      recEl.addEventListener("mouseenter", () => recPopup.addTo(map));
+      recEl.addEventListener("mouseleave", () => recPopup.remove());
     });
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, [libraries]);
+  }, [libraries, busyness]);
 
   if (loading) {
     return (

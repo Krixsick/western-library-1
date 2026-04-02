@@ -1,4 +1,5 @@
 import type { Library } from "../types/library";
+import type { RecBusyness } from "../types/library";
 import { useState, useEffect } from "react";
 import { libraries } from "../data/libraries";
 const DAYS = [
@@ -70,4 +71,28 @@ export function useLibraries() {
   }, []);
 
   return { libraries: libs, loading };
+}
+
+export function useRecBusyness() {
+  const [busyness, setBusyness] = useState<RecBusyness | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchBusyness() {
+      try {
+        const res = await fetch("http://localhost:3001/api/rec/data");
+        const data = await res.json();
+        setBusyness(data);
+      } catch (err) {
+        console.error("Failed to fetch rec busyness:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBusyness();
+    const interval = setInterval(fetchBusyness, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { busyness, loading };
 }

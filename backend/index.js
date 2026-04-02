@@ -1,10 +1,13 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const app = express();
 const libraryRouter = require("./libraryTime");
+const recRouter = require("./recBusyness");
 
 app.use(cors());
 app.use("/api/library", libraryRouter);
+app.use("/api/rec", recRouter);
 
 app.get("/", (req, res) => {
   res.send("hello");
