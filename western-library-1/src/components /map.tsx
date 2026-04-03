@@ -88,6 +88,17 @@ export function Map() {
     //   console.log(`lat: ${lat}, lng: ${lng}`);
     // });
 
+    // Blue dot showing user's live location
+    mapRef.current.addControl(
+      new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true,
+        showAccuracyCircle: false,
+      }),
+      "bottom-right",
+    );
+
     mapRef.current.on("style.load", () => {
       mapRef.current?.setConfigProperty("basemap", "lightPreset", "dusk");
       mapRef.current?.setConfigProperty(
