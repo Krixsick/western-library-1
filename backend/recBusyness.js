@@ -1,64 +1,72 @@
 const express = require("express");
 const axios = require("axios");
+const cron = require("node-cron");
+const redis = require("./redis");
 
 const router = express.Router();
 
-// In-memory cache
-let cache = {
-  data: null,
-  timestamp: 0,
-};
-
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const CACHE_KEY = "rec:busyness";
+const CACHE_TTL = 7200; // 2 hours in seconds (generous buffer between hourly fetches)
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 
-function parseBusynessLevel(total) {
-  if (total == null) return "unknown";
-  if (total < 40) return "low";
-  if (total <= 80) return "moderate";
-  return "busy";
-}
+// Pattern: "Area Name: 45" or "Area Name: Closed"
+const AREA_PATTERNS = [
+  { key: "squash", pattern: /squash\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "basketball", pattern: /basketball\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "volleyball", pattern: /volleyball\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "badminton", pattern: /badminton\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "futsal", pattern: /futsal\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "pickleball", pattern: /pickleball\s*[:\-–]\s*(\d+|closed)/i },
+  {
+    key: "thirdFloorFitness",
+    pattern: /3rd\s*floor\s*fitness\s*centre?\s*[:\-–]\s*(\d+|closed)/i,
+  },
+  {
+    key: "fourthFloorFitness",
+    pattern: /4th\s*floor\s*fitness\s*centre?\s*[:\-–]\s*(\d+|closed)/i,
+  },
+  { key: "cardioMezz", pattern: /cardio\s*mezz\s*[:\-–]\s*(\d+|closed)/i },
+  { key: "spin", pattern: /spin\s*[:\-–]\s*(\d+|closed)/i },
+  {
+    key: "womensOnlyStudio",
+    pattern: /women'?s?\s*only\s*studio\s*[:\-–]\s*(\d+|closed)/i,
+  },
+  { key: "pool", pattern: /pool\s*[:\-–]\s*(\d+|closed)/i },
+];
 
 function parseCaption(caption) {
   if (!caption) return null;
 
-  const result = {};
+  const areas = {};
+  let totalOccupancy = 0;
+  let foundAny = false;
 
-  // Try common patterns like "Weight Room: 45" or "Weight Room - 45" or "Weight Room 45"
-  const patterns = [
-    /weight\s*room\s*[:\-–]\s*(\d+)/i,
-    /cardio\s*(?:mezzanine)?\s*[:\-–]\s*(\d+)/i,
-    /spin\s*(?:room|studio)?\s*[:\-–]\s*(\d+)/i,
-  ];
-
-  const keys = ["weightRoom", "cardioMezzanine", "spinRoom"];
-
-  patterns.forEach((pattern, i) => {
+  for (const { key, pattern } of AREA_PATTERNS) {
     const match = caption.match(pattern);
     if (match) {
-      result[keys[i]] = parseInt(match[1]);
+      foundAny = true;
+      const val = match[1].toLowerCase();
+      if (val === "closed") {
+        areas[key] = "Closed";
+      } else {
+        const num = parseInt(val);
+        areas[key] = num;
+        totalOccupancy += num;
+      }
     }
-  });
-
-  // Also try to find a total/occupancy number
-  const totalMatch = caption.match(/total\s*[:\-–]\s*(\d+)/i);
-  if (totalMatch) {
-    result.total = parseInt(totalMatch[1]);
   }
 
-  // If we found at least one area, return
-  if (Object.keys(result).length > 0) {
-    return result;
-  }
+  if (!foundAny) return null;
 
-  // Fallback: try to find any numbers in the caption
-  const numbers = caption.match(/\d+/g);
-  if (numbers && numbers.length >= 1) {
-    return { rawNumbers: numbers.map(Number) };
-  }
+  return { areas, totalOccupancy };
+}
 
-  return null;
+function parseBusynessLevel(total) {
+  if (total == null) return "unknown";
+  if (total < 100) return "low";
+  if (total <= 200) return "moderate";
+  return "busy";
 }
 
 async function fetchFromApify() {
@@ -85,64 +93,94 @@ async function fetchFromApify() {
   }
 
   const latestPost = posts[0];
-  const caption = latestPost.caption || latestPost.text || "";
+  // console.log("[rec] Apify post keys:", Object.keys(latestPost));
+
+  // The actual stats are in the image alt text, not the caption
+  const caption =
+    latestPost.alt ||
+    latestPost.accessibilityCaption ||
+    latestPost.caption ||
+    latestPost.text ||
+    "";
+  // console.log("[rec] Caption text:", caption.substring(0, 300));
+
   const timestamp = latestPost.timestamp || latestPost.takenAtTimestamp || null;
 
   const parsed = parseCaption(caption);
 
-  const weightRoom = parsed?.weightRoom ?? null;
-  const cardioMezzanine = parsed?.cardioMezzanine ?? null;
-  const spinRoom = parsed?.spinRoom ?? null;
+  const areas = parsed?.areas ?? {};
+  const totalOccupancy = parsed?.totalOccupancy ?? null;
 
-  let totalOccupancy = parsed?.total ?? null;
-  if (totalOccupancy == null && weightRoom != null) {
-    totalOccupancy =
-      (weightRoom || 0) + (cardioMezzanine || 0) + (spinRoom || 0);
+  // Try to parse timestamp from caption text (e.g., "User Stats April 2, 2026 at 5:00 PM")
+  const captionTimeMatch = caption.match(
+    /User Stats\s+(.+?\d{1,2}:\d{2}\s*[AP]M)/i,
+  );
+
+  let lastUpdated;
+  if (captionTimeMatch) {
+    const date = new Date(captionTimeMatch[1]);
+    lastUpdated = isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
+  } else if (timestamp) {
+    const date =
+      typeof timestamp === "string"
+        ? new Date(timestamp)
+        : new Date(timestamp * 1000);
+    lastUpdated = isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
+  } else {
+    lastUpdated = new Date().toISOString();
   }
 
   return {
-    weightRoom,
-    cardioMezzanine,
-    spinRoom,
+    areas,
     totalOccupancy,
     busynessLevel: parseBusynessLevel(totalOccupancy),
-    lastUpdated: timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString(),
-    caption: caption.substring(0, 200),
+    lastUpdated,
     source: parsed ? "caption" : "unavailable",
   };
 }
 
+// Fetch from Apify and store in Redis
+async function refreshRecData() {
+  try {
+    console.log(`[rec] Fetching from Apify at ${new Date().toISOString()}`);
+    const data = await fetchFromApify();
+    await redis.setEx(CACHE_KEY, CACHE_TTL, JSON.stringify(data));
+    console.log(`[rec] Cached successfully — busyness: ${data.busynessLevel}`);
+  } catch (error) {
+    console.error("[rec] Scheduled fetch failed:", error.message);
+  }
+}
+
+// Schedule: run at minute 5 of every hour (1:05, 2:05, 3:05, ...)
+cron.schedule("5 * * * *", refreshRecData);
+
+// Also fetch once on startup so there's data immediately
+refreshRecData();
+
+// Endpoint just reads from Redis — no Apify calls
 router.get("/data", async (req, res) => {
   try {
-    const now = Date.now();
-
-    // Return cached data if still fresh
-    if (cache.data && now - cache.timestamp < CACHE_TTL) {
-      return res.json(cache.data);
+    const cached = await redis.get(CACHE_KEY);
+    if (cached) {
+      return res.json(JSON.parse(cached));
     }
 
-    const data = await fetchFromApify();
-
-    // Update cache
-    cache = { data, timestamp: now };
-
-    res.json(data);
-  } catch (error) {
-    console.error("Rec busyness fetch error:", error.message);
-
-    // Return stale cache if available
-    if (cache.data) {
-      return res.json({ ...cache.data, stale: true });
-    }
-
-    res.status(500).json({
-      error: "Failed to fetch rec center data",
-      busynessLevel: "unknown",
-      weightRoom: null,
-      cardioMezzanine: null,
-      spinRoom: null,
+    res.json({
+      areas: {},
       totalOccupancy: null,
+      busynessLevel: "unknown",
       lastUpdated: null,
+      message: "Data not yet available — waiting for next scheduled fetch",
+    });
+  } catch (error) {
+    console.error("Rec busyness read error:", error.message);
+    res.status(500).json({
+      error: "Failed to read rec center data",
+      busynessLevel: "unknown",
     });
   }
 });

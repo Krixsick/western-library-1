@@ -4,7 +4,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { isLibraryOpen, useLibraries, useRecBusyness } from "./utilities";
 import type { Library } from "../types/library";
 import { recCenter } from "../data/libraries";
-import { load } from "cheerio";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER: [number, number] = [-81.2737, 43.0096];
@@ -63,25 +62,25 @@ export function Map() {
     });
 
     // Coordinate display overlay
-    const coordDisplay = document.createElement("div");
-    coordDisplay.style.cssText =
-      "position:absolute;bottom:12px;left:12px;z-index:10;background:#1a1a1b99;backdrop-filter:blur(8px);color:#d7ccc8;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace;pointer-events:none;opacity:0;transition:opacity 0.2s;";
-    mapContainer.current.appendChild(coordDisplay);
+    // const coordDisplay = document.createElement("div");
+    // coordDisplay.style.cssText =
+    //   "position:absolute;bottom:12px;left:12px;z-index:10;background:#1a1a1b99;backdrop-filter:blur(8px);color:#d7ccc8;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace;pointer-events:none;opacity:0;transition:opacity 0.2s;";
+    // mapContainer.current.appendChild(coordDisplay);
 
-    mapRef.current.on("mousemove", (e) => {
-      const { lng, lat } = e.lngLat;
-      coordDisplay.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      coordDisplay.style.opacity = "1";
-    });
+    // mapRef.current.on("mousemove", (e) => {
+    //   const { lng, lat } = e.lngLat;
+    //   coordDisplay.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    //   coordDisplay.style.opacity = "1";
+    // });
 
-    mapRef.current.on("mouseout", () => {
-      coordDisplay.style.opacity = "0";
-    });
+    // mapRef.current.on("mouseout", () => {
+    //   coordDisplay.style.opacity = "0";
+    // });
 
-    mapRef.current.on("click", (e) => {
-      const { lng, lat } = e.lngLat;
-      console.log(`lat: ${lat}, lng: ${lng}`);
-    });
+    // mapRef.current.on("click", (e) => {
+    //   const { lng, lat } = e.lngLat;
+    //   console.log(`lat: ${lat}, lng: ${lng}`);
+    // });
 
     mapRef.current.on("style.load", () => {
       mapRef.current?.setConfigProperty("basemap", "lightPreset", "dusk");
@@ -132,6 +131,7 @@ export function Map() {
         el.addEventListener("click", () => {
           mapRef.current?.flyTo({
             center: [lib.log, lib.lat],
+            //affects how much we zoom in when clicking on the marker, higher closer, lower further
             zoom: 17,
             pitch: 55,
             bearing: DEFAULT_BEARING,
@@ -168,8 +168,8 @@ export function Map() {
       // Rec center marker
       const busynessColors: Record<string, string> = {
         low: "#22c55e",
-        moderate: "#f59e0b",
-        busy: "#ef4444",
+        moderate: "#f1a625ff",
+        busy: "#f18080ff",
         unknown: "#6b7280",
       };
 
@@ -196,12 +196,35 @@ export function Map() {
       });
 
       const levelLabel = level.charAt(0).toUpperCase() + level.slice(1);
-      const areas: string[] = [];
-      if (busyness?.weightRoom != null)
-        areas.push(`Weight Room: ${busyness.weightRoom}`);
-      if (busyness?.cardioMezzanine != null)
-        areas.push(`Cardio: ${busyness.cardioMezzanine}`);
-      if (busyness?.spinRoom != null) areas.push(`Spin: ${busyness.spinRoom}`);
+
+      // Format area labels for display
+      const areaLabels: Record<string, string> = {
+        squash: "Squash",
+        basketball: "Basketball",
+        volleyball: "Volleyball",
+        badminton: "Badminton",
+        futsal: "Futsal",
+        pickleball: "Pickleball",
+        thirdFloorFitness: "3rd Floor Fitness",
+        fourthFloorFitness: "4th Floor Fitness",
+        cardioMezz: "Cardio Mezz",
+        spin: "Spin",
+        womensOnlyStudio: "Women's Only Studio",
+        pool: "Pool",
+      };
+
+      const areaEntries = busyness?.areas ? Object.entries(busyness.areas) : [];
+
+      const areasHtml = areaEntries
+        .map(([key, val]) => {
+          const label = areaLabels[key] || key;
+          const display =
+            val === "Closed"
+              ? `<span style="color:#000000;">Closed</span>`
+              : val;
+          return `<div style="color:#000000">${label}: ${display}</div>`;
+        })
+        .join("");
 
       let updatedText = "";
       if (busyness?.lastUpdated) {
@@ -217,14 +240,14 @@ export function Map() {
         closeOnClick: false,
         className: "library-popup",
       }).setHTML(
-        `<div style="font-size:13px;padding:2px 4px;">
+        `<div style="font-size:13px;padding:4px 6px;">
           <div style="font-weight:600;">${recCenter.name}</div>
           <div style="margin-top:4px;">
             <span style="color:${color};font-weight:600;">${levelLabel}</span>
-            ${busyness?.totalOccupancy != null ? `<span style="color:#888;margin-left:6px;">${busyness.totalOccupancy} people</span>` : ""}
+            ${busyness?.totalOccupancy != null ? `<span style="color:#000000;margin-left:6px;">${busyness.totalOccupancy} total</span>` : ""}
           </div>
-          ${areas.length > 0 ? `<div style="font-size:11px;color:#888;margin-top:2px;">${areas.join(" · ")}</div>` : ""}
-          ${updatedText ? `<div style="font-size:10px;color:#aaa;margin-top:2px;">Updated ${updatedText}</div>` : ""}
+          ${areasHtml ? `<div style="font-size:11px;color:#ccc;margin-top:4px;line-height:1.5;">${areasHtml}</div>` : ""}
+          ${updatedText ? `<div style="font-size:10px;color:#aaa;margin-top:4px;">Updated ${updatedText}</div>` : ""}
         </div>`,
       );
 

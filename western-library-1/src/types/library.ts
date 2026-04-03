@@ -14,13 +14,9 @@ export interface Library {
 }
 
 export interface RecBusyness {
-  weightRoom: number | null;
-  cardioMezzanine: number | null;
-  spinRoom: number | null;
+  areas: Record<string, number | "Closed">;
   totalOccupancy: number | null;
   busynessLevel: "low" | "moderate" | "busy" | "unknown";
   lastUpdated: string | null;
-  caption?: string;
   source?: string;
-  stale?: boolean;
 }
