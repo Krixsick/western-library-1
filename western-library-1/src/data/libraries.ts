@@ -7,7 +7,64 @@ export const recCenter = {
   log: -81.27523,
 };
 
-export const residences: Residence[] = [{}];
+export const residences: Residence[] = [
+  {
+    id: "ontario",
+    name: "Ontario Hall",
+    lat: 43.0014372138898,
+    log: -81.2777253236977,
+    rating: 4.0,
+  },
+  {
+    id: "saugeen",
+    name: "Saugeen Hall",
+    lat: 43.01135,
+    log: -81.27905,
+    rating: 4.1,
+  },
+  {
+    id: "sydenham",
+    name: "Sydenham Hall",
+    lat: 43.00722990379663,
+    log: -81.26509225974203,
+    rating: 4.2,
+  },
+  {
+    id: "delaware",
+    name: "Delaware Hall",
+    lat: 43.00871871234688,
+    log: -81.26894957136956,
+    rating: 3.9,
+  },
+  {
+    id: "clare",
+    name: "Clare Hall",
+    lat: 43.0036028868235,
+    log: -81.28295646684506,
+    rating: 4.0,
+  },
+  {
+    id: "essex",
+    name: "Essex Hall",
+    lat: 43.00140410790283,
+    log: -81.27568464870988,
+    rating: 3.8,
+  },
+  {
+    id: "elgin",
+    name: "Elgin Hall",
+    lat: 43.00833147019921,
+    log: -81.26486595343152,
+    rating: 4.3,
+  },
+  {
+    id: "perth",
+    name: "Perth Hall",
+    lat: 42.999933091692185,
+    log: -81.2767712573533,
+    rating: 4.0,
+  },
+];
 
 export const libraries: Library[] = [
   {

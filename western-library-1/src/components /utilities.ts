@@ -1,5 +1,6 @@
 import type { Library } from "../types/library";
 import type { RecBusyness } from "../types/library";
+import type { DiningData } from "../types/residence";
 import { useState, useEffect } from "react";
 import { libraries } from "../data/libraries";
 const DAYS = [
@@ -95,4 +96,28 @@ export function useRecBusyness() {
   }, []);
 
   return { busyness, loading };
+}
+
+export function useDiningHours() {
+  const [dining, setDining] = useState<DiningData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDining() {
+      try {
+        const res = await fetch("http://localhost:3001/api/dining/data");
+        const data = await res.json();
+        setDining(data);
+      } catch (err) {
+        console.error("Failed to fetch dining hours:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDining();
+    const interval = setInterval(fetchDining, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { dining, loading };
 }

@@ -1,9 +1,14 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { isLibraryOpen, useLibraries, useRecBusyness } from "./utilities";
+import {
+  isLibraryOpen,
+  useLibraries,
+  useRecBusyness,
+  useDiningHours,
+} from "./utilities";
 import type { Library } from "../types/library";
-import { recCenter } from "../data/libraries";
+import { recCenter, residences } from "../data/libraries";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 const DEFAULT_CENTER: [number, number] = [-81.2737, 43.0096];
@@ -17,6 +22,7 @@ export function Map() {
   const styleLoaded = useRef(false);
   const { libraries, loading } = useLibraries();
   const { busyness } = useRecBusyness();
+  const { dining } = useDiningHours();
 
   const resetMap = () => {
     mapRef.current?.flyTo({
@@ -263,6 +269,93 @@ export function Map() {
 
       markers.push(recMarker);
       popups.push(recPopup);
+
+      // Dining hall markers (diamond shape)
+      residences.forEach((res) => {
+        const hall = dining?.halls?.[res.id];
+
+        let diningColor: string;
+        let statusText: string;
+
+        if (!hall) {
+          diningColor = "#6b7280"; // gray — no data
+          statusText = "No data";
+        } else if (hall.closed) {
+          diningColor = "#ef4444"; // red — closed today
+          statusText = hall.note ? `Closed (${hall.note})` : "Closed Today";
+        } else if (hall.currentMeal) {
+          diningColor = "#22c55e"; // green — serving a meal
+          statusText = `Serving ${hall.currentMeal}`;
+        } else if (hall.isOpen) {
+          diningColor = "#f1a625"; // amber — open but between meals
+          statusText = "Between Meals";
+        } else {
+          diningColor = "#ef4444"; // red — closed right now
+          statusText = "Closed";
+        }
+
+        const dEl = document.createElement("div");
+        dEl.style.width = "14px";
+        dEl.style.height = "14px";
+        dEl.style.transform = "rotate(45deg)";
+        dEl.style.cursor = "pointer";
+        dEl.style.border = "2px solid white";
+        dEl.style.backgroundColor = diningColor;
+        dEl.style.boxShadow = `0 0 10px ${diningColor}, 0 0 20px ${diningColor}80`;
+
+        dEl.addEventListener("click", () => {
+          mapRef.current?.flyTo({
+            center: [res.log, res.lat],
+            zoom: 17,
+            pitch: 55,
+            bearing: DEFAULT_BEARING,
+            duration: 1500,
+          });
+        });
+
+        // Build popup content
+        let mealInfo = "";
+        if (hall?.currentMeal && hall.currentMealEnd) {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#888;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
+        } else {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span></div>`;
+        }
+
+        if (hall?.nextMeal && hall.nextMealStart) {
+          mealInfo += `<div style="font-size:11px;color:#888;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+        }
+
+        // List all meal times
+        if (hall?.meals && Object.keys(hall.meals).length > 0) {
+          const mealsHtml = Object.values(hall.meals)
+            .map((m) => `<div>${m.label}: ${m.start} – ${m.end}</div>`)
+            .join("");
+          mealInfo += `<div style="font-size:10px;color:#aaa;margin-top:4px;line-height:1.4;">${mealsHtml}</div>`;
+        }
+
+        const dPopup = new mapboxgl.Popup({
+          offset: 12,
+          closeButton: false,
+          closeOnClick: false,
+          className: "library-popup",
+        }).setHTML(
+          `<div style="font-size:13px;padding:4px 6px;">
+            <div style="font-weight:600;">${res.name}</div>
+            ${mealInfo}
+          </div>`,
+        );
+
+        const dMarker = new mapboxgl.Marker({ element: dEl })
+          .setLngLat([res.log, res.lat])
+          .setPopup(dPopup)
+          .addTo(mapRef.current!);
+
+        dEl.addEventListener("mouseenter", () => dPopup.addTo(mapRef.current!));
+        dEl.addEventListener("mouseleave", () => dPopup.remove());
+
+        markers.push(dMarker);
+        popups.push(dPopup);
+      });
     }
 
     // If style is already loaded, add markers now
@@ -279,7 +372,7 @@ export function Map() {
       popups.forEach((p) => p.remove());
       map.off("style.load", addMarkers);
     };
-  }, [libraries, busyness]);
+  }, [libraries, busyness, dining]);
 
   return (
     <div className="relative w-full h-full">
