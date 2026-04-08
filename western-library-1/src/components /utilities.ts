@@ -3,6 +3,9 @@ import type { RecBusyness } from "../types/library";
 import type { DiningData } from "../types/residence";
 import { useState, useEffect } from "react";
 import { libraries } from "../data/libraries";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
 const DAYS = [
   "Sunday",
   "Monday",
@@ -50,7 +53,7 @@ export function useLibraries() {
   useEffect(() => {
     async function fetchHours() {
       try {
-        const res = await fetch("http://localhost:3001/api/library/data");
+        const res = await fetch(`${API_URL}/api/library/data`);
         const hoursData = await res.json();
         setLibs((prev) =>
           prev.map((lib) => {
@@ -81,7 +84,7 @@ export function useRecBusyness() {
   useEffect(() => {
     async function fetchBusyness() {
       try {
-        const res = await fetch("http://localhost:3001/api/rec/data");
+        const res = await fetch(`${API_URL}/api/rec/data`);
         const data = await res.json();
         setBusyness(data);
       } catch (err) {
@@ -105,7 +108,7 @@ export function useDiningHours() {
   useEffect(() => {
     async function fetchDining() {
       try {
-        const res = await fetch("http://localhost:3001/api/dining/data");
+        const res = await fetch(`${API_URL}/api/dining/data`);
         const data = await res.json();
         setDining(data);
       } catch (err) {
