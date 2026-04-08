@@ -123,16 +123,60 @@ export function Map() {
 
     const markers: mapboxgl.Marker[] = [];
     const popups: mapboxgl.Popup[] = [];
+    const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
+
+    // Track the currently open popup so we can close it when another is tapped
+    let activePopup: mapboxgl.Popup | null = null;
+
+    // Helper: wire up popup interactions (hover on desktop, tap on mobile)
+    function wirePopup(el: HTMLElement, popup: mapboxgl.Popup) {
+      if (isMobile) {
+        // Mobile: tap to toggle popup, close others first
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (activePopup && activePopup !== popup) {
+            activePopup.remove();
+          }
+          if (popup.isOpen()) {
+            popup.remove();
+            activePopup = null;
+          } else {
+            popup.addTo(mapRef.current!);
+            activePopup = popup;
+          }
+        });
+      } else {
+        // Desktop: hover to show/hide
+        el.addEventListener("mouseenter", () => popup.addTo(mapRef.current!));
+        el.addEventListener("mouseleave", () => popup.remove());
+      }
+    }
+
+    // Close active popup when tapping the map background (mobile)
+    function onMapClick() {
+      if (activePopup) {
+        activePopup.remove();
+        activePopup = null;
+      }
+    }
+    if (isMobile) {
+      map.on("click", onMapClick);
+    }
 
     function addMarkers() {
+      // Marker sizes: bigger on mobile for easier tapping
+      const libSize = isMobile ? "22px" : "16px";
+      const recSize = isMobile ? "26px" : "20px";
+      const diningSize = isMobile ? "18px" : "14px";
+
       // Library markers
       libraries.forEach((lib: Library) => {
         const isOpen = isLibraryOpen(lib);
 
         const el = document.createElement("div");
         el.className = "library-marker";
-        el.style.width = "16px";
-        el.style.height = "16px";
+        el.style.width = libSize;
+        el.style.height = libSize;
         el.style.borderRadius = "50%";
         el.style.cursor = "pointer";
         el.style.border = "2px solid white";
@@ -145,24 +189,26 @@ export function Map() {
           el.style.boxShadow = "0 0 10px #ef4444, 0 0 20px #ef444480";
         }
 
-        el.addEventListener("click", () => {
-          mapRef.current?.flyTo({
-            center: [lib.log, lib.lat],
-            //affects how much we zoom in when clicking on the marker, higher closer, lower further
-            zoom: 17,
-            pitch: 55,
-            bearing: DEFAULT_BEARING,
-            duration: 1500,
+        if (!isMobile) {
+          el.addEventListener("click", () => {
+            mapRef.current?.flyTo({
+              center: [lib.log, lib.lat],
+              zoom: 17,
+              pitch: 55,
+              bearing: DEFAULT_BEARING,
+              duration: 1500,
+            });
           });
-        });
+        }
 
         const popup = new mapboxgl.Popup({
-          offset: 12,
-          closeButton: false,
+          offset: isMobile ? 16 : 12,
+          closeButton: isMobile,
           closeOnClick: false,
           className: "library-popup",
+          maxWidth: isMobile ? "280px" : "240px",
         }).setHTML(
-          `<div style="font-size:13px;font-weight:600;padding:2px 4px;">
+          `<div style="font-size:${isMobile ? "15px" : "13px"};font-weight:600;padding:${isMobile ? "8px 10px" : "2px 4px"};">
             ${lib.name}
             <span style="color:${isOpen ? "#22c55e" : "#ef4444"};margin-left:6px;">
               ${isOpen ? "Open" : "Closed"}
@@ -175,8 +221,7 @@ export function Map() {
           .setPopup(popup)
           .addTo(mapRef.current!);
 
-        el.addEventListener("mouseenter", () => popup.addTo(mapRef.current!));
-        el.addEventListener("mouseleave", () => popup.remove());
+        wirePopup(el, popup);
 
         markers.push(marker);
         popups.push(popup);
@@ -194,27 +239,28 @@ export function Map() {
       const color = busynessColors[level];
 
       const recEl = document.createElement("div");
-      recEl.style.width = "20px";
-      recEl.style.height = "20px";
+      recEl.style.width = recSize;
+      recEl.style.height = recSize;
       recEl.style.borderRadius = "4px";
       recEl.style.cursor = "pointer";
       recEl.style.border = "2px solid white";
       recEl.style.backgroundColor = color;
       recEl.style.boxShadow = `0 0 10px ${color}, 0 0 20px ${color}80`;
 
-      recEl.addEventListener("click", () => {
-        mapRef.current?.flyTo({
-          center: [recCenter.log, recCenter.lat],
-          zoom: 17,
-          pitch: 55,
-          bearing: DEFAULT_BEARING,
-          duration: 1500,
+      if (!isMobile) {
+        recEl.addEventListener("click", () => {
+          mapRef.current?.flyTo({
+            center: [recCenter.log, recCenter.lat],
+            zoom: 17,
+            pitch: 55,
+            bearing: DEFAULT_BEARING,
+            duration: 1500,
+          });
         });
-      });
+      }
 
       const levelLabel = level.charAt(0).toUpperCase() + level.slice(1);
 
-      // Format area labels for display
       const areaLabels: Record<string, string> = {
         squash: "Squash",
         basketball: "Basketball",
@@ -251,20 +297,24 @@ export function Map() {
         updatedText = ago < 1 ? "Just now" : `${ago} min ago`;
       }
 
+      const fontSize = isMobile ? "15px" : "13px";
+      const padding = isMobile ? "8px 10px" : "4px 6px";
+
       const recPopup = new mapboxgl.Popup({
-        offset: 14,
-        closeButton: false,
+        offset: isMobile ? 18 : 14,
+        closeButton: isMobile,
         closeOnClick: false,
         className: "library-popup",
+        maxWidth: isMobile ? "300px" : "260px",
       }).setHTML(
-        `<div style="font-size:13px;padding:4px 6px;">
+        `<div style="font-size:${fontSize};padding:${padding};">
           <div style="font-weight:600;">${recCenter.name}</div>
           <div style="margin-top:4px;">
             <span style="color:${color};font-weight:600;">${levelLabel}</span>
             ${busyness?.totalOccupancy != null ? `<span style="color:#000000;margin-left:6px;">${busyness.totalOccupancy} total</span>` : ""}
           </div>
-          ${areasHtml ? `<div style="font-size:11px;color:#ccc;margin-top:4px;line-height:1.5;">${areasHtml}</div>` : ""}
-          ${updatedText ? `<div style="font-size:10px;color:#aaa;margin-top:4px;">Updated ${updatedText}</div>` : ""}
+          ${areasHtml ? `<div style="font-size:${isMobile ? "13px" : "11px"};color:#ccc;margin-top:4px;line-height:1.5;">${areasHtml}</div>` : ""}
+          ${updatedText ? `<div style="font-size:${isMobile ? "12px" : "10px"};color:#aaa;margin-top:4px;">Updated ${updatedText}</div>` : ""}
         </div>`,
       );
 
@@ -273,10 +323,7 @@ export function Map() {
         .setPopup(recPopup)
         .addTo(mapRef.current!);
 
-      recEl.addEventListener("mouseenter", () =>
-        recPopup.addTo(mapRef.current!),
-      );
-      recEl.addEventListener("mouseleave", () => recPopup.remove());
+      wirePopup(recEl, recPopup);
 
       markers.push(recMarker);
       popups.push(recPopup);
@@ -289,42 +336,43 @@ export function Map() {
         let statusText: string;
 
         if (!hall) {
-          diningColor = "#6b7280"; // gray — no data
+          diningColor = "#6b7280";
           statusText = "No data";
         } else if (hall.closed) {
-          diningColor = "#ef4444"; // red — closed today
+          diningColor = "#ef4444";
           statusText = hall.note ? `Closed (${hall.note})` : "Closed Today";
         } else if (hall.currentMeal) {
-          diningColor = "#22c55e"; // green — serving a meal
+          diningColor = "#22c55e";
           statusText = `Serving ${hall.currentMeal}`;
         } else if (hall.isOpen) {
-          diningColor = "#f1a625"; // amber — open but between meals
+          diningColor = "#f1a625";
           statusText = "Between Meals";
         } else {
-          diningColor = "#ef4444"; // red — closed right now
+          diningColor = "#ef4444";
           statusText = "Closed";
         }
 
         const dEl = document.createElement("div");
-        dEl.style.width = "14px";
-        dEl.style.height = "14px";
+        dEl.style.width = diningSize;
+        dEl.style.height = diningSize;
         dEl.style.transform = "rotate(45deg)";
         dEl.style.cursor = "pointer";
         dEl.style.border = "2px solid white";
         dEl.style.backgroundColor = diningColor;
         dEl.style.boxShadow = `0 0 10px ${diningColor}, 0 0 20px ${diningColor}80`;
 
-        dEl.addEventListener("click", () => {
-          mapRef.current?.flyTo({
-            center: [res.log, res.lat],
-            zoom: 17,
-            pitch: 55,
-            bearing: DEFAULT_BEARING,
-            duration: 1500,
+        if (!isMobile) {
+          dEl.addEventListener("click", () => {
+            mapRef.current?.flyTo({
+              center: [res.log, res.lat],
+              zoom: 17,
+              pitch: 55,
+              bearing: DEFAULT_BEARING,
+              duration: 1500,
+            });
           });
-        });
+        }
 
-        // Build popup content
         let mealInfo = "";
         if (hall?.currentMeal && hall.currentMealEnd) {
           mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#888;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
@@ -333,24 +381,24 @@ export function Map() {
         }
 
         if (hall?.nextMeal && hall.nextMealStart) {
-          mealInfo += `<div style="font-size:11px;color:#888;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+          mealInfo += `<div style="font-size:${isMobile ? "13px" : "11px"};color:#888;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
         }
 
-        // List all meal times
         if (hall?.meals && Object.keys(hall.meals).length > 0) {
           const mealsHtml = Object.values(hall.meals)
             .map((m) => `<div>${m.label}: ${m.start} – ${m.end}</div>`)
             .join("");
-          mealInfo += `<div style="font-size:10px;color:#aaa;margin-top:4px;line-height:1.4;">${mealsHtml}</div>`;
+          mealInfo += `<div style="font-size:${isMobile ? "12px" : "10px"};color:#aaa;margin-top:4px;line-height:1.4;">${mealsHtml}</div>`;
         }
 
         const dPopup = new mapboxgl.Popup({
-          offset: 12,
-          closeButton: false,
+          offset: isMobile ? 16 : 12,
+          closeButton: isMobile,
           closeOnClick: false,
           className: "library-popup",
+          maxWidth: isMobile ? "280px" : "240px",
         }).setHTML(
-          `<div style="font-size:13px;padding:4px 6px;">
+          `<div style="font-size:${isMobile ? "15px" : "13px"};padding:${isMobile ? "8px 10px" : "4px 6px"};">
             <div style="font-weight:600;">${res.name}</div>
             ${mealInfo}
           </div>`,
@@ -361,8 +409,7 @@ export function Map() {
           .setPopup(dPopup)
           .addTo(mapRef.current!);
 
-        dEl.addEventListener("mouseenter", () => dPopup.addTo(mapRef.current!));
-        dEl.addEventListener("mouseleave", () => dPopup.remove());
+        wirePopup(dEl, dPopup);
 
         markers.push(dMarker);
         popups.push(dPopup);
@@ -382,6 +429,7 @@ export function Map() {
       markers.forEach((m) => m.remove());
       popups.forEach((p) => p.remove());
       map.off("style.load", addMarkers);
+      map.off("click", onMapClick);
     };
   }, [libraries, busyness, dining]);
 

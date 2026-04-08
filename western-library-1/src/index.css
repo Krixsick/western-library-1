@@ -12,3 +12,17 @@ body {
   --color-secondary: #3e2723;
   --color-tertiary: #d7ccc8;
 }
+
+/* Mobile popup close button styling */
+@media (max-width: 768px) {
+  .mapboxgl-popup-close-button {
+    font-size: 20px;
+    padding: 4px 8px;
+    color: #666;
+  }
+
+  .mapboxgl-popup-content {
+    border-radius: 12px;
+    padding: 10px;
+  }
+}
