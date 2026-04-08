@@ -169,9 +169,18 @@ export function Map() {
       const recSize = isMobile ? "26px" : "20px";
       const diningSize = isMobile ? "18px" : "14px";
 
+      // Theme-aligned marker border: warm gold (primary)
+      const markerBorder = "2px solid #af8f5c";
+      // Consistent popup sizing across device classes
+      const titleSize = isMobile ? "15px" : "13px";
+      const metaSize = isMobile ? "13px" : "11px";
+      const subMetaSize = isMobile ? "12px" : "10px";
+      const popupPad = isMobile ? "12px 36px 12px 14px" : "10px 32px 10px 12px";
+
       // Library markers
       libraries.forEach((lib: Library) => {
         const isOpen = isLibraryOpen(lib);
+        const statusColor = isOpen ? "#22c55e" : "#ef4444";
 
         const el = document.createElement("div");
         el.className = "library-marker";
@@ -179,15 +188,9 @@ export function Map() {
         el.style.height = libSize;
         el.style.borderRadius = "50%";
         el.style.cursor = "pointer";
-        el.style.border = "2px solid white";
-
-        if (isOpen) {
-          el.style.backgroundColor = "#22c55e";
-          el.style.boxShadow = "0 0 10px #22c55e, 0 0 20px #22c55e80";
-        } else {
-          el.style.backgroundColor = "#ef4444";
-          el.style.boxShadow = "0 0 10px #ef4444, 0 0 20px #ef444480";
-        }
+        el.style.border = markerBorder;
+        el.style.backgroundColor = statusColor;
+        el.style.boxShadow = `0 0 10px ${statusColor}, 0 0 20px ${statusColor}80`;
 
         if (!isMobile) {
           el.addEventListener("click", () => {
@@ -208,11 +211,9 @@ export function Map() {
           className: "library-popup",
           maxWidth: isMobile ? "280px" : "240px",
         }).setHTML(
-          `<div style="font-size:${isMobile ? "15px" : "13px"};font-weight:600;padding:${isMobile ? "8px 10px" : "2px 4px"};">
-            ${lib.name}
-            <span style="color:${isOpen ? "#22c55e" : "#ef4444"};margin-left:6px;">
-              ${isOpen ? "Open" : "Closed"}
-            </span>
+          `<div style="padding:${popupPad};font-size:${titleSize};display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:600;color:#d7ccc8;">${lib.name}</span>
+            <span style="color:${statusColor};font-weight:600;white-space:nowrap;margin-left:auto;">${isOpen ? "Open" : "Closed"}</span>
           </div>`,
         );
 
@@ -243,7 +244,7 @@ export function Map() {
       recEl.style.height = recSize;
       recEl.style.borderRadius = "4px";
       recEl.style.cursor = "pointer";
-      recEl.style.border = "2px solid white";
+      recEl.style.border = markerBorder;
       recEl.style.backgroundColor = color;
       recEl.style.boxShadow = `0 0 10px ${color}, 0 0 20px ${color}80`;
 
@@ -283,9 +284,9 @@ export function Map() {
           const label = areaLabels[key] || key;
           const display =
             val === "Closed"
-              ? `<span style="color:#000000;">Closed</span>`
-              : val;
-          return `<div style="color:#000000">${label}: ${display}</div>`;
+              ? `<span style="color:#ef4444;">Closed</span>`
+              : `<span style="color:#d7ccc8;">${val}</span>`;
+          return `<div style="display:flex;justify-content:space-between;gap:10px;color:#a8a29e;"><span>${label}</span>${display}</div>`;
         })
         .join("");
 
@@ -297,9 +298,6 @@ export function Map() {
         updatedText = ago < 1 ? "Just now" : `${ago} min ago`;
       }
 
-      const fontSize = isMobile ? "15px" : "13px";
-      const padding = isMobile ? "8px 10px" : "4px 6px";
-
       const recPopup = new mapboxgl.Popup({
         offset: isMobile ? 18 : 14,
         closeButton: isMobile,
@@ -307,14 +305,14 @@ export function Map() {
         className: "library-popup",
         maxWidth: isMobile ? "300px" : "260px",
       }).setHTML(
-        `<div style="font-size:${fontSize};padding:${padding};">
-          <div style="font-weight:600;">${recCenter.name}</div>
-          <div style="margin-top:4px;">
-            <span style="color:${color};font-weight:600;">${levelLabel}</span>
-            ${busyness?.totalOccupancy != null ? `<span style="color:#000000;margin-left:6px;">${busyness.totalOccupancy} total</span>` : ""}
+        `<div style="padding:${popupPad};font-size:${titleSize};">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-weight:600;color:#d7ccc8;">${recCenter.name}</span>
+            <span style="color:${color};font-weight:600;margin-left:auto;">${levelLabel}</span>
           </div>
-          ${areasHtml ? `<div style="font-size:${isMobile ? "13px" : "11px"};color:#ccc;margin-top:4px;line-height:1.5;">${areasHtml}</div>` : ""}
-          ${updatedText ? `<div style="font-size:${isMobile ? "12px" : "10px"};color:#aaa;margin-top:4px;">Updated ${updatedText}</div>` : ""}
+          ${busyness?.totalOccupancy != null ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">${busyness.totalOccupancy} people total</div>` : ""}
+          ${areasHtml ? `<div style="font-size:${metaSize};margin-top:8px;line-height:1.6;border-top:1px solid #3e2723;padding-top:8px;">${areasHtml}</div>` : ""}
+          ${updatedText ? `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:8px;">Updated ${updatedText}</div>` : ""}
         </div>`,
       );
 
