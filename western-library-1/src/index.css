@@ -12,3 +12,66 @@ body {
   --color-secondary: #3e2723;
   --color-tertiary: #d7ccc8;
 }
+
+/* Themed popup styling — matches dark background + gold primary */
+.library-popup .mapboxgl-popup-content {
+  background: #1a1a1b;
+  color: #d7ccc8;
+  border: 1px solid #af8f5c;
+  border-radius: 10px;
+  padding: 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+/* Match the little triangle "tip" to the border color */
+.library-popup.mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+.library-popup.mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+.library-popup.mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip {
+  border-bottom-color: #af8f5c;
+}
+.library-popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+.library-popup.mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+.library-popup.mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip {
+  border-top-color: #af8f5c;
+}
+.library-popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
+  border-right-color: #af8f5c;
+}
+.library-popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+  border-left-color: #af8f5c;
+}
+
+/* Bigger, themed close button */
+.library-popup .mapboxgl-popup-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  right: 4px;
+  top: 4px;
+  padding: 0;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+  color: #d7ccc8;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.library-popup .mapboxgl-popup-close-button:hover {
+  background: rgba(175, 143, 92, 0.18);
+  color: #af8f5c;
+}
+
+@media (max-width: 768px) {
+  .library-popup .mapboxgl-popup-close-button {
+    width: 36px;
+    height: 36px;
+    font-size: 28px;
+  }
+}

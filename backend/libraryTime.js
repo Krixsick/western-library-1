@@ -1,85 +1,116 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const axios = require("axios");
+const cron = require("node-cron");
+const redis = require("./redis");
 
 const router = express.Router();
 
-const LIBRARY_PAGES = {
-  archives: "https://www.lib.uwo.ca/hours/archives/index.html",
-  weldon: "https://www.lib.uwo.ca/hours/weldon/index.html",
-  taylor: "https://www.lib.uwo.ca/hours/taylor/index.html",
-  music: "https://www.lib.uwo.ca/hours/music/index.html",
-  education: "https://www.lib.uwo.ca/hours/education/index.html",
-  law: "https://www.lib.uwo.ca/hours/law/index.html",
-  business: "https://www.lib.uwo.ca/hours/business/index.html",
+const LIBRARY_LIDS = {
+  weldon: 3003,
+  taylor: 3000,
+  music: 2998,
+  education: 2996,
+  law: 2997,
+  business: 2995,
 };
 
-async function scrapeLibraryHours(browser, url) {
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle2" });
+const IID = 3436;
+const CACHE_KEY = "library:hours";
+const CACHE_TTL = 3600;
+const DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
-  await page.waitForSelector(".s-lc-whw", { timeout: 15000 });
+function formatDay(dayData) {
+  if (!dayData || !dayData.times) return null;
+  const { status, hours } = dayData.times;
+  if (status && status !== "open") return null;
+  if (!Array.isArray(hours) || hours.length === 0) return null;
+  const { from, to } = hours[0];
+  if (!from || !to) return null;
+  return `${from} – ${to}`;
+}
 
-  const hours = await page.evaluate(() => {
-    const result = {};
+async function fetchLibraryHours(lid) {
+  const res = await axios.get(
+    "https://api3-ca.libcal.com/api_hours_grid.php",
+    {
+      params: { iid: IID, lid, format: "json" },
+      timeout: 10000,
+    },
+  );
+  const location = res.data && res.data[`loc_${lid}`];
+  if (!location || !location.weeks || !location.weeks[0]) return null;
 
-    const headers = document.querySelectorAll(".s-lc-whw thead th");
-    const days = [];
-    headers.forEach((th) => {
-      const text = th.textContent.trim();
-      const dayMatch = text.match(
-        /(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/,
-      );
-      if (dayMatch) days.push(dayMatch[1]);
-    });
+  const week = location.weeks[0];
+  const result = {};
+  for (const day of DAYS) {
+    result[day] = formatDay(week[day]);
+  }
+  return result;
+}
 
-    const mainRow = document.querySelector("tr.s-lc-whw-loc");
-    if (!mainRow) return result;
-
-    const cells = mainRow.querySelectorAll("td");
-    let dayIndex = 0;
-    cells.forEach((td, i) => {
-      if (i === 0) return;
-      if (dayIndex >= days.length) return;
-
-      const closed = td.querySelector(".s-lc-closed");
-      const timeSpan = td.querySelector(".s-lc-time");
-
-      if (closed) {
-        result[days[dayIndex]] = null;
-      } else if (timeSpan) {
-        result[days[dayIndex]] = timeSpan.textContent.trim();
+async function fetchAllLibraries() {
+  const entries = Object.entries(LIBRARY_LIDS);
+  const results = {};
+  await Promise.all(
+    entries.map(async ([id, lid]) => {
+      try {
+        results[id] = await fetchLibraryHours(lid);
+      } catch (err) {
+        console.error(`Failed to fetch ${id}:`, err.message);
+        results[id] = null;
       }
-      dayIndex++;
-    });
+    }),
+  );
+  return results;
+}
 
-    return result;
-  });
+async function getCached() {
+  try {
+    const cached = await redis.get(CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (err) {
+    console.error("Redis get failed:", err.message);
+  }
+  return null;
+}
 
-  await page.close();
-  return hours;
+async function setCached(data) {
+  try {
+    await redis.set(CACHE_KEY, JSON.stringify(data), { EX: CACHE_TTL });
+  } catch (err) {
+    console.error("Redis set failed:", err.message);
+  }
 }
 
 router.get("/data", async (req, res) => {
-  let browser;
   try {
-    browser = await puppeteer.launch({ headless: "new" });
-    const results = {};
+    const cached = await getCached();
+    if (cached) return res.json(cached);
 
-    for (const [id, url] of Object.entries(LIBRARY_PAGES)) {
-      try {
-        results[id] = await scrapeLibraryHours(browser, url);
-      } catch (err) {
-        console.error(`Failed to scrape ${id}:`, err.message);
-        results[id] = null;
-      }
-    }
-
-    res.json(results);
+    const data = await fetchAllLibraries();
+    await setCached(data);
+    res.json(data);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Failed to scrape hours" });
-  } finally {
-    if (browser) await browser.close();
+    res.status(500).json({ error: "Failed to fetch library hours" });
+  }
+});
+
+cron.schedule("10 * * * *", async () => {
+  try {
+    const data = await fetchAllLibraries();
+    await setCached(data);
+    console.log("[library] cache warmed");
+  } catch (err) {
+    console.error("[library] scheduled fetch failed:", err.message);
   }
 });
 
