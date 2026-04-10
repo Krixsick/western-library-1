@@ -281,7 +281,8 @@ async function refreshRecData() {
 
 // Schedule: run at minute 5 of every hour (1:05, 2:05, 3:05, ...)
 cron.schedule("5 * * * *", refreshRecData);
-
+// Schedule: run at minute 5 of every hour (1:20, 2:20, 3:20, ...)
+cron.schedule("20 * * * *", refreshRecData);
 // Also fetch once on startup so there's data immediately
 refreshRecData();
 
