@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import {
-  isLibraryOpen,
+  getLibraryStatus,
   useLibraries,
   useRecBusyness,
   useDiningHours,
@@ -123,7 +123,9 @@ export function Map() {
 
     const markers: mapboxgl.Marker[] = [];
     const popups: mapboxgl.Popup[] = [];
-    const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
+    const isMobile =
+      window.matchMedia("(max-width: 768px)").matches ||
+      "ontouchstart" in window;
 
     // Track the currently open popup so we can close it when another is tapped
     let activePopup: mapboxgl.Popup | null = null;
@@ -179,8 +181,8 @@ export function Map() {
 
       // Library markers
       libraries.forEach((lib: Library) => {
-        const isOpen = isLibraryOpen(lib);
-        const statusColor = isOpen ? "#22c55e" : "#ef4444";
+        const status = getLibraryStatus(lib);
+        const statusColor = status.isOpen ? "#22c55e" : "#ef4444";
 
         const el = document.createElement("div");
         el.className = "library-marker";
@@ -204,6 +206,19 @@ export function Map() {
           });
         }
 
+        // Build detail line under the header
+        let detailHtml = "";
+        if (status.isOpen && status.closesAt && status.timeUntilClose) {
+          detailHtml = `<div style="font-size:${metaSize};color:#a8a29e;margin-top:4px;">Closes at ${status.closesAt} · ${status.timeUntilClose} left</div>`;
+        } else if (!status.isOpen && status.opensAt && status.opensDay) {
+          detailHtml = `<div style="font-size:${metaSize};color:#a8a29e;margin-top:4px;">Opens ${status.opensDay} at ${status.opensAt}</div>`;
+        }
+
+        // Show today's hours if available
+        const hoursHtml = status.todayHours
+          ? `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:2px;">Today: ${status.todayHours}</div>`
+          : "";
+
         const popup = new mapboxgl.Popup({
           offset: isMobile ? 16 : 12,
           closeButton: isMobile,
@@ -211,9 +226,13 @@ export function Map() {
           className: "library-popup",
           maxWidth: isMobile ? "280px" : "240px",
         }).setHTML(
-          `<div style="padding:${popupPad};font-size:${titleSize};display:flex;align-items:center;gap:10px;">
-            <span style="font-weight:600;color:#d7ccc8;">${lib.name}</span>
-            <span style="color:${statusColor};font-weight:600;white-space:nowrap;margin-left:auto;">${isOpen ? "Open" : "Closed"}</span>
+          `<div style="padding:${popupPad};font-size:${titleSize};">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-weight:600;color:#d7ccc8;">${lib.name}</span>
+              <span style="color:${statusColor};font-weight:600;white-space:nowrap;margin-left:auto;">${status.isOpen ? "Open" : "Closed"}</span>
+            </div>
+            ${detailHtml}
+            ${hoursHtml}
           </div>`,
         );
 
@@ -233,11 +252,13 @@ export function Map() {
         low: "#22c55e",
         moderate: "#f1a625ff",
         busy: "#f18080ff",
+        closed: "#ef4444",
         unknown: "#6b7280",
       };
 
       const level = busyness?.busynessLevel || "unknown";
-      const color = busynessColors[level];
+      const color = busynessColors[level] || busynessColors.unknown;
+      const isClosed = level === "closed";
 
       const recEl = document.createElement("div");
       recEl.style.width = recSize;
@@ -279,24 +300,34 @@ export function Map() {
 
       const areaEntries = busyness?.areas ? Object.entries(busyness.areas) : [];
 
-      const areasHtml = areaEntries
-        .map(([key, val]) => {
-          const label = areaLabels[key] || key;
-          const display =
-            val === "Closed"
-              ? `<span style="color:#ef4444;">Closed</span>`
-              : `<span style="color:#d7ccc8;">${val}</span>`;
-          return `<div style="display:flex;justify-content:space-between;gap:10px;color:#a8a29e;"><span>${label}</span>${display}</div>`;
-        })
-        .join("");
+      // Only show area breakdown when rec center is open
+      const areasHtml = isClosed
+        ? ""
+        : areaEntries
+            .map(([key, val]) => {
+              const label = areaLabels[key] || key;
+              const display =
+                val === "Closed"
+                  ? `<span style="color:#ef4444;">Closed</span>`
+                  : `<span style="color:#d7ccc8;">${val}</span>`;
+              return `<div style="display:flex;justify-content:space-between;gap:10px;color:#a8a29e;"><span>${label}</span>${display}</div>`;
+            })
+            .join("");
 
       let updatedText = "";
-      if (busyness?.lastUpdated) {
+      if (!isClosed && busyness?.lastUpdated) {
         const ago = Math.round(
           (Date.now() - new Date(busyness.lastUpdated).getTime()) / 60000,
         );
         updatedText = ago < 1 ? "Just now" : `${ago} min ago`;
       }
+
+      // Show today's hours if available
+      const recHours = busyness?.recHours;
+      const hoursText =
+        recHours?.open && recHours?.close
+          ? `${recHours.open} – ${recHours.close}`
+          : "";
 
       const recPopup = new mapboxgl.Popup({
         offset: isMobile ? 18 : 14,
@@ -310,7 +341,8 @@ export function Map() {
             <span style="font-weight:600;color:#d7ccc8;">${recCenter.name}</span>
             <span style="color:${color};font-weight:600;margin-left:auto;">${levelLabel}</span>
           </div>
-          ${busyness?.totalOccupancy != null ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">${busyness.totalOccupancy} people total</div>` : ""}
+          ${hoursText ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">Today: ${hoursText}</div>` : ""}
+          ${!isClosed && busyness?.totalOccupancy != null ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">${busyness.totalOccupancy} people total</div>` : ""}
           ${areasHtml ? `<div style="font-size:${metaSize};margin-top:8px;line-height:1.6;border-top:1px solid #3e2723;padding-top:8px;">${areasHtml}</div>` : ""}
           ${updatedText ? `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:8px;">Updated ${updatedText}</div>` : ""}
         </div>`,

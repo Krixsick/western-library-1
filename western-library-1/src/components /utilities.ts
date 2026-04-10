@@ -15,25 +15,13 @@ const DAYS = [
   "Friday",
   "Saturday",
 ];
-export function isLibraryOpen(library: Library): boolean {
-  if (!library.hours) return false;
-
-  const now = new Date();
-  const day = DAYS[now.getDay()];
-  const hours = library.hours[day];
-  if (!hours) return false;
-
-  // hours is a string like "9am – 11pm"
-  const parts = hours.split(/\s*[–-]\s*/);
-  if (parts.length !== 2) return false;
-
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const openMinutes = parseTimeToMinutes(parts[0]);
-  const closeMinutes = parseTimeToMinutes(parts[1]);
-
-  if (openMinutes === null || closeMinutes === null) return false;
-
-  return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+export interface LibraryStatus {
+  isOpen: boolean;
+  closesAt: string | null;
+  timeUntilClose: string | null;
+  opensAt: string | null;
+  opensDay: string | null;
+  todayHours: string | null;
 }
 
 function parseTimeToMinutes(timeStr: string): number | null {
@@ -45,6 +33,136 @@ function parseTimeToMinutes(timeStr: string): number | null {
   if (period === "pm" && h !== 12) h += 12;
   if (period === "am" && h === 12) h = 0;
   return h * 60 + m;
+}
+
+function parseDayHours(hours: Record<string, string | null>, dayName: string) {
+  const h = hours[dayName];
+  if (!h) return null;
+  const parts = h.split(/\s*[–-]\s*/);
+  if (parts.length !== 2) return null;
+  const open = parseTimeToMinutes(parts[0]);
+  const close = parseTimeToMinutes(parts[1]);
+  if (open === null || close === null) return null;
+  return { open, close, openStr: parts[0].trim(), closeStr: parts[1].trim(), raw: h };
+}
+
+function formatDuration(mins: number): string {
+  if (mins <= 0) return "0m";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+export function getLibraryStatus(library: Library): LibraryStatus {
+  const closed: LibraryStatus = {
+    isOpen: false,
+    closesAt: null,
+    timeUntilClose: null,
+    opensAt: null,
+    opensDay: null,
+    todayHours: null,
+  };
+
+  if (!library.hours) return closed;
+
+  const now = new Date();
+  const todayIndex = now.getDay();
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const todayParsed = parseDayHours(library.hours, DAYS[todayIndex]);
+
+  // 1. Check if we're in yesterday's late-night session (e.g., "8am – 2am" past midnight)
+  const yesterdayIndex = (todayIndex + 6) % 7;
+  const yesterday = parseDayHours(library.hours, DAYS[yesterdayIndex]);
+  if (yesterday && yesterday.close <= yesterday.open && currentMin < yesterday.close) {
+    const minsLeft = yesterday.close - currentMin;
+    return {
+      isOpen: true,
+      closesAt: yesterday.closeStr,
+      timeUntilClose: formatDuration(minsLeft),
+      opensAt: null,
+      opensDay: null,
+      todayHours: todayParsed?.raw ?? null,
+    };
+  }
+
+  // 2. Check today's hours
+  if (todayParsed) {
+    const spansMidnight = todayParsed.close <= todayParsed.open;
+
+    if (!spansMidnight) {
+      // Normal same-day hours (e.g., "9am – 11pm")
+      if (currentMin >= todayParsed.open && currentMin < todayParsed.close) {
+        const minsLeft = todayParsed.close - currentMin;
+        return {
+          isOpen: true,
+          closesAt: todayParsed.closeStr,
+          timeUntilClose: formatDuration(minsLeft),
+          opensAt: null,
+          opensDay: null,
+          todayHours: todayParsed.raw,
+        };
+      }
+      if (currentMin < todayParsed.open) {
+        return {
+          isOpen: false,
+          closesAt: null,
+          timeUntilClose: null,
+          opensAt: todayParsed.openStr,
+          opensDay: "today",
+          todayHours: todayParsed.raw,
+        };
+      }
+      // Past close — fall through to find next opening
+    } else {
+      // Spans midnight (e.g., "8am – 2am")
+      if (currentMin >= todayParsed.open) {
+        const minsLeft = (24 * 60 - currentMin) + todayParsed.close;
+        return {
+          isOpen: true,
+          closesAt: todayParsed.closeStr,
+          timeUntilClose: formatDuration(minsLeft),
+          opensAt: null,
+          opensDay: null,
+          todayHours: todayParsed.raw,
+        };
+      }
+      // Between yesterday's close and today's open — closed, opens later today
+      if (currentMin < todayParsed.open) {
+        return {
+          isOpen: false,
+          closesAt: null,
+          timeUntilClose: null,
+          opensAt: todayParsed.openStr,
+          opensDay: "today",
+          todayHours: todayParsed.raw,
+        };
+      }
+    }
+  }
+
+  // 3. Closed — scan forward up to 7 days for the next opening
+  for (let i = 1; i <= 7; i++) {
+    const nextIndex = (todayIndex + i) % 7;
+    const next = parseDayHours(library.hours, DAYS[nextIndex]);
+    if (next) {
+      const dayLabel = i === 1 ? "tomorrow" : DAYS[nextIndex];
+      return {
+        isOpen: false,
+        closesAt: null,
+        timeUntilClose: null,
+        opensAt: next.openStr,
+        opensDay: dayLabel,
+        todayHours: todayParsed?.raw ?? null,
+      };
+    }
+  }
+
+  return { ...closed, todayHours: todayParsed?.raw ?? null };
+}
+
+export function isLibraryOpen(library: Library): boolean {
+  return getLibraryStatus(library).isOpen;
 }
 
 export function useLibraries() {

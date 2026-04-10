@@ -16,7 +16,12 @@ export interface Library {
 export interface RecBusyness {
   areas: Record<string, number | "Closed">;
   totalOccupancy: number | null;
-  busynessLevel: "low" | "moderate" | "busy" | "unknown";
+  busynessLevel: "low" | "moderate" | "busy" | "closed" | "unknown";
   lastUpdated: string | null;
   source?: string;
+  recHours?: {
+    open: string | null;
+    close: string | null;
+    isOpen: boolean;
+  };
 }

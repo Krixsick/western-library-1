@@ -10,6 +10,125 @@ const CACHE_TTL = 7200; // 2 hours in seconds (generous buffer between hourly fe
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 
+// ── Rec center operating hours (from uwo.ca/campusrec/schedules) ──────────
+// Each schedule has a date-range matcher and per-day open/close in 24h "HH:MM"
+const REC_SCHEDULES = [
+  {
+    name: "winter",
+    // Jan 4 – Apr 10
+    match: (m, d) =>
+      (m === 0 && d >= 4) || (m >= 1 && m <= 2) || (m === 3 && d <= 10),
+    hours: {
+      0: { open: "9:00", close: "23:30" }, // Sun
+      1: { open: "6:30", close: "23:30" }, // Mon
+      2: { open: "6:30", close: "23:30" }, // Tue
+      3: { open: "6:30", close: "23:30" }, // Wed
+      4: { open: "6:30", close: "23:30" }, // Thu
+      5: { open: "6:30", close: "20:00" }, // Fri
+      6: { open: "9:00", close: "20:00" }, // Sat
+    },
+  },
+  {
+    name: "exam",
+    // Apr 11 – Apr 30
+    match: (m, d) => m === 3 && d >= 11 && d <= 30,
+    hours: {
+      0: { open: "9:00", close: "20:00" },
+      1: { open: "6:30", close: "22:00" },
+      2: { open: "6:30", close: "22:00" },
+      3: { open: "6:30", close: "22:00" },
+      4: { open: "6:30", close: "22:00" },
+      5: { open: "6:30", close: "20:00" },
+      6: { open: "9:00", close: "20:00" },
+    },
+  },
+  {
+    name: "summer",
+    // May 1 – Aug 31
+    match: (m) => m >= 4 && m <= 7,
+    hours: {
+      0: { open: "9:00", close: "17:00" },
+      1: { open: "6:30", close: "20:00" },
+      2: { open: "6:30", close: "20:00" },
+      3: { open: "6:30", close: "20:00" },
+      4: { open: "6:30", close: "20:00" },
+      5: { open: "6:30", close: "20:00" },
+      6: { open: "9:00", close: "17:00" },
+    },
+  },
+  {
+    name: "fall",
+    // Sep 1 – Dec 31 (same as winter)
+    match: (m) => m >= 8 && m <= 11,
+    hours: {
+      0: { open: "9:00", close: "23:30" },
+      1: { open: "6:30", close: "23:30" },
+      2: { open: "6:30", close: "23:30" },
+      3: { open: "6:30", close: "23:30" },
+      4: { open: "6:30", close: "23:30" },
+      5: { open: "6:30", close: "20:00" },
+      6: { open: "9:00", close: "20:00" },
+    },
+  },
+];
+
+// Fallback (Jan 1-3, etc.) — same as winter
+const DEFAULT_HOURS = {
+  0: { open: "9:00", close: "23:30" },
+  1: { open: "6:30", close: "23:30" },
+  2: { open: "6:30", close: "23:30" },
+  3: { open: "6:30", close: "23:30" },
+  4: { open: "6:30", close: "23:30" },
+  5: { open: "6:30", close: "20:00" },
+  6: { open: "9:00", close: "20:00" },
+};
+
+function timeToMinutes(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatTime12h(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0
+    ? `${h12}${suffix}`
+    : `${h12}:${String(m).padStart(2, "0")}${suffix}`;
+}
+
+function getRecStatus() {
+  const now = new Date();
+  // Eastern time
+  const et = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/Toronto" }),
+  );
+  const month = et.getMonth();
+  const date = et.getDate();
+  const day = et.getDay(); // 0=Sun
+  const minutes = et.getHours() * 60 + et.getMinutes();
+
+  const schedule = REC_SCHEDULES.find((s) => s.match(month, date)) || {
+    hours: DEFAULT_HOURS,
+  };
+  const todayHours = schedule.hours[day];
+
+  if (!todayHours) {
+    return { isOpen: false, todayOpen: null, todayClose: null };
+  }
+
+  const openMin = timeToMinutes(todayHours.open);
+  const closeMin = timeToMinutes(todayHours.close);
+
+  return {
+    isOpen: minutes >= openMin && minutes < closeMin,
+    todayOpen: formatTime12h(todayHours.open),
+    todayClose: formatTime12h(todayHours.close),
+  };
+}
+
+// ── Instagram caption parsing ─────────────────────────────────────────────
+
 // Pattern: "Area Name: 45" or "Area Name: Closed"
 const AREA_PATTERNS = [
   { key: "squash", pattern: /squash\s*[:\-–]\s*(\d+|closed)/i },
@@ -41,6 +160,7 @@ function parseCaption(caption) {
   const areas = {};
   let totalOccupancy = 0;
   let foundAny = false;
+  let hasOpenArea = false;
 
   for (const { key, pattern } of AREA_PATTERNS) {
     const match = caption.match(pattern);
@@ -50,6 +170,7 @@ function parseCaption(caption) {
       if (val === "closed") {
         areas[key] = "Closed";
       } else {
+        hasOpenArea = true;
         const num = parseInt(val);
         areas[key] = num;
         totalOccupancy += num;
@@ -59,7 +180,7 @@ function parseCaption(caption) {
 
   if (!foundAny) return null;
 
-  return { areas, totalOccupancy };
+  return { areas, totalOccupancy, allClosed: !hasOpenArea };
 }
 
 function parseBusynessLevel(total) {
@@ -93,7 +214,6 @@ async function fetchFromApify() {
   }
 
   const latestPost = posts[0];
-  // console.log("[rec] Apify post keys:", Object.keys(latestPost));
 
   // The actual stats are in the image alt text, not the caption
   const caption =
@@ -102,7 +222,6 @@ async function fetchFromApify() {
     latestPost.caption ||
     latestPost.text ||
     "";
-  // console.log("[rec] Caption text:", caption.substring(0, 300));
 
   const timestamp = latestPost.timestamp || latestPost.takenAtTimestamp || null;
 
@@ -134,10 +253,15 @@ async function fetchFromApify() {
     lastUpdated = new Date().toISOString();
   }
 
+  // If every scraped area is "Closed", the rec center is closed
+  const busynessLevel = parsed?.allClosed
+    ? "closed"
+    : parseBusynessLevel(totalOccupancy);
+
   return {
     areas,
     totalOccupancy,
-    busynessLevel: parseBusynessLevel(totalOccupancy),
+    busynessLevel,
     lastUpdated,
     source: parsed ? "caption" : "unavailable",
   };
@@ -161,19 +285,39 @@ cron.schedule("5 * * * *", refreshRecData);
 // Also fetch once on startup so there's data immediately
 refreshRecData();
 
-// Endpoint just reads from Redis — no Apify calls
+// Endpoint reads from Redis, then overlays real-time open/closed from the schedule
 router.get("/data", async (req, res) => {
   try {
+    const recStatus = getRecStatus();
+
     const cached = await redis.get(CACHE_KEY);
     if (cached) {
-      return res.json(JSON.parse(cached));
+      const data = JSON.parse(cached);
+
+      // Override busyness if the rec center is currently closed per schedule
+      if (!recStatus.isOpen) {
+        data.busynessLevel = "closed";
+      }
+
+      data.recHours = {
+        open: recStatus.todayOpen,
+        close: recStatus.todayClose,
+        isOpen: recStatus.isOpen,
+      };
+
+      return res.json(data);
     }
 
     res.json({
       areas: {},
       totalOccupancy: null,
-      busynessLevel: "unknown",
+      busynessLevel: recStatus.isOpen ? "unknown" : "closed",
       lastUpdated: null,
+      recHours: {
+        open: recStatus.todayOpen,
+        close: recStatus.todayClose,
+        isOpen: recStatus.isOpen,
+      },
       message: "Data not yet available — waiting for next scheduled fetch",
     });
   } catch (error) {
