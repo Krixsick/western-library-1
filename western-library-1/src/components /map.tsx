@@ -371,6 +371,9 @@ export function Map() {
         } else if (hall.closed) {
           diningColor = "#ef4444";
           statusText = hall.note ? `Closed (${hall.note})` : "Closed Today";
+        } else if (hall.refresh) {
+          diningColor = "#f1a625";
+          statusText = "Closed for Refresh";
         } else if (hall.currentMeal) {
           diningColor = "#22c55e";
           statusText = `Serving ${hall.currentMeal}`;
@@ -387,7 +390,7 @@ export function Map() {
         dEl.style.height = diningSize;
         dEl.style.transform = "rotate(45deg)";
         dEl.style.cursor = "pointer";
-        dEl.style.border = "2px solid white";
+        dEl.style.border = markerBorder;
         dEl.style.backgroundColor = diningColor;
         dEl.style.boxShadow = `0 0 10px ${diningColor}, 0 0 20px ${diningColor}80`;
 
@@ -404,21 +407,31 @@ export function Map() {
         }
 
         let mealInfo = "";
-        if (hall?.currentMeal && hall.currentMealEnd) {
-          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#888;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
+        if (hall?.refresh && hall.refreshEnd) {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#a8a29e;margin-left:6px;">until ${hall.refreshEnd}</span></div>`;
+        } else if (hall?.currentMeal && hall.currentMealEnd) {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#a8a29e;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
         } else {
           mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span></div>`;
         }
 
         if (hall?.nextMeal && hall.nextMealStart) {
-          mealInfo += `<div style="font-size:${isMobile ? "13px" : "11px"};color:#888;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+          mealInfo += `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+        }
+
+        // Show snack bar availability note
+        if (hall && !hall.closed && hall.snackBarToday !== undefined) {
+          const snackNote = hall.snackBarToday
+            ? ""
+            : `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:2px;">No snack bar today</div>`;
+          mealInfo += snackNote;
         }
 
         if (hall?.meals && Object.keys(hall.meals).length > 0) {
           const mealsHtml = Object.values(hall.meals)
-            .map((m) => `<div>${m.label}: ${m.start} – ${m.end}</div>`)
+            .map((m: any) => `<div style="display:flex;justify-content:space-between;gap:10px;"><span>${m.label}</span><span style="color:#d7ccc8;">${m.start} – ${m.end}</span></div>`)
             .join("");
-          mealInfo += `<div style="font-size:${isMobile ? "12px" : "10px"};color:#aaa;margin-top:4px;line-height:1.4;">${mealsHtml}</div>`;
+          mealInfo += `<div style="font-size:${metaSize};color:#a8a29e;margin-top:8px;line-height:1.6;border-top:1px solid #3e2723;padding-top:8px;">${mealsHtml}</div>`;
         }
 
         const dPopup = new mapboxgl.Popup({
@@ -426,10 +439,10 @@ export function Map() {
           closeButton: isMobile,
           closeOnClick: false,
           className: "library-popup",
-          maxWidth: isMobile ? "280px" : "240px",
+          maxWidth: isMobile ? "280px" : "260px",
         }).setHTML(
-          `<div style="font-size:${isMobile ? "15px" : "13px"};padding:${isMobile ? "8px 10px" : "4px 6px"};">
-            <div style="font-weight:600;">${res.name}</div>
+          `<div style="padding:${popupPad};font-size:${titleSize};">
+            <div style="font-weight:600;color:#d7ccc8;">${res.name}</div>
             ${mealInfo}
           </div>`,
         );

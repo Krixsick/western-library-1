@@ -19,6 +19,15 @@ const MEAL_PERIODS = [
   { key: "snackBar", label: "Snack Bar", start: "9:00 PM", end: "11:00 PM", startMin: 1260, endMin: 1380 },
 ];
 
+// Brief closures between meals for cleaning
+// (from residencedining.uwo.ca/hoursoperation.cfm)
+const REFRESH_PERIODS = [
+  { startMin: 675, endMin: 690, start: "11:15 AM", end: "11:30 AM" },    // between breakfast & lunch
+  { startMin: 840, endMin: 870, start: "2:00 PM", end: "2:30 PM" },      // between lunch & late lunch
+  { startMin: 975, endMin: 990, start: "4:15 PM", end: "4:30 PM" },      // between late lunch & dinner
+  { startMin: 1140, endMin: 1170, start: "7:00 PM", end: "7:30 PM", snackBarOnly: true }, // during dinner, snack bar units only
+];
+
 // Hall definitions with their groups and regular schedule
 const HALL_GROUPS = {
   group1: {
@@ -135,18 +144,23 @@ function computeHallStatus(hallId) {
   return buildMealStatus(hallId, hallName, currentMin, withinHours, openMin, closeMin, null, group);
 }
 
+function hasSnackBarToday(group) {
+  if (group.snackBar === "all") return true;
+  if (group.snackBar === "none") return false;
+  if (group.snackBar === "weekday") {
+    const day = getEasternTime().getDay();
+    // Sun(0)–Thu(4) = yes, Fri(5)–Sat(6) = no
+    return day >= 0 && day <= 4;
+  }
+  return false;
+}
+
 function buildMealStatus(hallId, hallName, currentMin, withinHours, openMin, closeMin, note, group) {
-  // Build available meals based on hall close time
+  const snackBarToday = hasSnackBarToday(group);
+
+  // Build available meals based on hall close time and snack bar availability
   const availableMeals = MEAL_PERIODS.filter((meal) => {
-    // Skip snack bar if hall doesn't have it
-    if (meal.key === "snackBar") {
-      if (group.snackBar === "none") return false;
-      if (group.snackBar === "weekday") {
-        const now = getEasternTime();
-        const day = now.getDay();
-        if (day === 5 || day === 6) return false; // no snack bar Fri/Sat
-      }
-    }
+    if (meal.key === "snackBar" && !snackBarToday) return false;
     // Only include meals that start before hall closes
     return meal.startMin < closeMin;
   });
@@ -173,7 +187,34 @@ function buildMealStatus(hallId, hallName, currentMin, withinHours, openMin, clo
       meals,
       closed: false,
       note,
+      snackBarToday,
     };
+  }
+
+  // Check if we're in a refresh period
+  for (const refresh of REFRESH_PERIODS) {
+    if (currentMin >= refresh.startMin && currentMin < refresh.endMin) {
+      // 7:00-7:30 PM refresh only applies to snack bar units
+      if (refresh.snackBarOnly && !snackBarToday) continue;
+
+      // Find the next meal after this refresh
+      const nextMeal = availableMeals.find((m) => m.startMin >= refresh.endMin);
+
+      return {
+        name: hallName,
+        isOpen: true,
+        currentMeal: null,
+        currentMealEnd: null,
+        nextMeal: nextMeal?.label || null,
+        nextMealStart: nextMeal?.start || null,
+        meals,
+        closed: false,
+        note,
+        refresh: true,
+        refreshEnd: refresh.end,
+        snackBarToday,
+      };
+    }
   }
 
   // Find current meal
@@ -182,12 +223,15 @@ function buildMealStatus(hallId, hallName, currentMin, withinHours, openMin, clo
 
   for (let i = 0; i < availableMeals.length; i++) {
     const meal = availableMeals[i];
+
+    // For snack bar halls, dinner has a refresh at 7:00-7:30 PM
+    // If we're in the dinner period but in the refresh window, we already handled it above
     if (currentMin >= meal.startMin && currentMin < meal.endMin) {
       currentMeal = meal;
       nextMeal = availableMeals[i + 1] || null;
       break;
     }
-    // Between meals
+    // Between meals (outside refresh — shouldn't normally happen, but fallback)
     if (i < availableMeals.length - 1 && currentMin >= meal.endMin && currentMin < availableMeals[i + 1].startMin) {
       nextMeal = availableMeals[i + 1];
       break;
@@ -204,6 +248,8 @@ function buildMealStatus(hallId, hallName, currentMin, withinHours, openMin, clo
     meals,
     closed: false,
     note,
+    refresh: false,
+    snackBarToday,
   };
 }
 

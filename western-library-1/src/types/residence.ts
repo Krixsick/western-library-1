@@ -25,6 +25,9 @@ export interface DiningHall {
   meals: Record<string, MealPeriod>;
   closed: boolean;
   note: string | null;
+  refresh?: boolean;
+  refreshEnd?: string;
+  snackBarToday?: boolean;
 }
 
 export interface DiningData {
