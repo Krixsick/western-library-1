@@ -70,8 +70,8 @@ export const libraries: Library[] = [
   {
     id: "archives",
     name: "Archives and Research Collections Centre",
-    lat: 43.0101,
-    log: -81.2801,
+    lat: 43.00782400989684,
+    log: -81.27599205547884,
     rating: 4.5,
     image: "",
   },

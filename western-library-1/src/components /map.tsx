@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import {
-  isLibraryOpen,
+  getLibraryStatus,
   useLibraries,
   useRecBusyness,
   useDiningHours,
@@ -123,7 +123,9 @@ export function Map() {
 
     const markers: mapboxgl.Marker[] = [];
     const popups: mapboxgl.Popup[] = [];
-    const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
+    const isMobile =
+      window.matchMedia("(max-width: 768px)").matches ||
+      "ontouchstart" in window;
 
     // Track the currently open popup so we can close it when another is tapped
     let activePopup: mapboxgl.Popup | null = null;
@@ -179,8 +181,8 @@ export function Map() {
 
       // Library markers
       libraries.forEach((lib: Library) => {
-        const isOpen = isLibraryOpen(lib);
-        const statusColor = isOpen ? "#22c55e" : "#ef4444";
+        const status = getLibraryStatus(lib);
+        const statusColor = status.isOpen ? "#22c55e" : "#ef4444";
 
         const el = document.createElement("div");
         el.className = "library-marker";
@@ -204,6 +206,19 @@ export function Map() {
           });
         }
 
+        // Build detail line under the header
+        let detailHtml = "";
+        if (status.isOpen && status.closesAt && status.timeUntilClose) {
+          detailHtml = `<div style="font-size:${metaSize};color:#a8a29e;margin-top:4px;">Closes at ${status.closesAt} · ${status.timeUntilClose} left</div>`;
+        } else if (!status.isOpen && status.opensAt && status.opensDay) {
+          detailHtml = `<div style="font-size:${metaSize};color:#a8a29e;margin-top:4px;">Opens ${status.opensDay} at ${status.opensAt}</div>`;
+        }
+
+        // Show today's hours if available
+        const hoursHtml = status.todayHours
+          ? `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:2px;">Today: ${status.todayHours}</div>`
+          : "";
+
         const popup = new mapboxgl.Popup({
           offset: isMobile ? 16 : 12,
           closeButton: isMobile,
@@ -211,9 +226,13 @@ export function Map() {
           className: "library-popup",
           maxWidth: isMobile ? "280px" : "240px",
         }).setHTML(
-          `<div style="padding:${popupPad};font-size:${titleSize};display:flex;align-items:center;gap:10px;">
-            <span style="font-weight:600;color:#d7ccc8;">${lib.name}</span>
-            <span style="color:${statusColor};font-weight:600;white-space:nowrap;margin-left:auto;">${isOpen ? "Open" : "Closed"}</span>
+          `<div style="padding:${popupPad};font-size:${titleSize};">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-weight:600;color:#d7ccc8;">${lib.name}</span>
+              <span style="color:${statusColor};font-weight:600;white-space:nowrap;margin-left:auto;">${status.isOpen ? "Open" : "Closed"}</span>
+            </div>
+            ${detailHtml}
+            ${hoursHtml}
           </div>`,
         );
 
@@ -233,11 +252,13 @@ export function Map() {
         low: "#22c55e",
         moderate: "#f1a625ff",
         busy: "#f18080ff",
+        closed: "#ef4444",
         unknown: "#6b7280",
       };
 
       const level = busyness?.busynessLevel || "unknown";
-      const color = busynessColors[level];
+      const color = busynessColors[level] || busynessColors.unknown;
+      const isClosed = level === "closed";
 
       const recEl = document.createElement("div");
       recEl.style.width = recSize;
@@ -279,24 +300,34 @@ export function Map() {
 
       const areaEntries = busyness?.areas ? Object.entries(busyness.areas) : [];
 
-      const areasHtml = areaEntries
-        .map(([key, val]) => {
-          const label = areaLabels[key] || key;
-          const display =
-            val === "Closed"
-              ? `<span style="color:#ef4444;">Closed</span>`
-              : `<span style="color:#d7ccc8;">${val}</span>`;
-          return `<div style="display:flex;justify-content:space-between;gap:10px;color:#a8a29e;"><span>${label}</span>${display}</div>`;
-        })
-        .join("");
+      // Only show area breakdown when rec center is open
+      const areasHtml = isClosed
+        ? ""
+        : areaEntries
+            .map(([key, val]) => {
+              const label = areaLabels[key] || key;
+              const display =
+                val === "Closed"
+                  ? `<span style="color:#ef4444;">Closed</span>`
+                  : `<span style="color:#d7ccc8;">${val}</span>`;
+              return `<div style="display:flex;justify-content:space-between;gap:10px;color:#a8a29e;"><span>${label}</span>${display}</div>`;
+            })
+            .join("");
 
       let updatedText = "";
-      if (busyness?.lastUpdated) {
+      if (!isClosed && busyness?.lastUpdated) {
         const ago = Math.round(
           (Date.now() - new Date(busyness.lastUpdated).getTime()) / 60000,
         );
         updatedText = ago < 1 ? "Just now" : `${ago} min ago`;
       }
+
+      // Show today's hours if available
+      const recHours = busyness?.recHours;
+      const hoursText =
+        recHours?.open && recHours?.close
+          ? `${recHours.open} – ${recHours.close}`
+          : "";
 
       const recPopup = new mapboxgl.Popup({
         offset: isMobile ? 18 : 14,
@@ -310,7 +341,8 @@ export function Map() {
             <span style="font-weight:600;color:#d7ccc8;">${recCenter.name}</span>
             <span style="color:${color};font-weight:600;margin-left:auto;">${levelLabel}</span>
           </div>
-          ${busyness?.totalOccupancy != null ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">${busyness.totalOccupancy} people total</div>` : ""}
+          ${hoursText ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">Today: ${hoursText}</div>` : ""}
+          ${!isClosed && busyness?.totalOccupancy != null ? `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">${busyness.totalOccupancy} people total</div>` : ""}
           ${areasHtml ? `<div style="font-size:${metaSize};margin-top:8px;line-height:1.6;border-top:1px solid #3e2723;padding-top:8px;">${areasHtml}</div>` : ""}
           ${updatedText ? `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:8px;">Updated ${updatedText}</div>` : ""}
         </div>`,
@@ -339,6 +371,9 @@ export function Map() {
         } else if (hall.closed) {
           diningColor = "#ef4444";
           statusText = hall.note ? `Closed (${hall.note})` : "Closed Today";
+        } else if (hall.refresh) {
+          diningColor = "#f1a625";
+          statusText = "Closed for Refresh";
         } else if (hall.currentMeal) {
           diningColor = "#22c55e";
           statusText = `Serving ${hall.currentMeal}`;
@@ -355,7 +390,7 @@ export function Map() {
         dEl.style.height = diningSize;
         dEl.style.transform = "rotate(45deg)";
         dEl.style.cursor = "pointer";
-        dEl.style.border = "2px solid white";
+        dEl.style.border = markerBorder;
         dEl.style.backgroundColor = diningColor;
         dEl.style.boxShadow = `0 0 10px ${diningColor}, 0 0 20px ${diningColor}80`;
 
@@ -372,21 +407,31 @@ export function Map() {
         }
 
         let mealInfo = "";
-        if (hall?.currentMeal && hall.currentMealEnd) {
-          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#888;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
+        if (hall?.refresh && hall.refreshEnd) {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#a8a29e;margin-left:6px;">until ${hall.refreshEnd}</span></div>`;
+        } else if (hall?.currentMeal && hall.currentMealEnd) {
+          mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span><span style="color:#a8a29e;margin-left:6px;">until ${hall.currentMealEnd}</span></div>`;
         } else {
           mealInfo += `<div style="margin-top:4px;"><span style="color:${diningColor};font-weight:600;">${statusText}</span></div>`;
         }
 
         if (hall?.nextMeal && hall.nextMealStart) {
-          mealInfo += `<div style="font-size:${isMobile ? "13px" : "11px"};color:#888;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+          mealInfo += `<div style="font-size:${metaSize};color:#a8a29e;margin-top:2px;">Next: ${hall.nextMeal} at ${hall.nextMealStart}</div>`;
+        }
+
+        // Show snack bar availability note
+        if (hall && !hall.closed && hall.snackBarToday !== undefined) {
+          const snackNote = hall.snackBarToday
+            ? ""
+            : `<div style="font-size:${subMetaSize};color:#6b6563;margin-top:2px;">No snack bar today</div>`;
+          mealInfo += snackNote;
         }
 
         if (hall?.meals && Object.keys(hall.meals).length > 0) {
           const mealsHtml = Object.values(hall.meals)
-            .map((m) => `<div>${m.label}: ${m.start} – ${m.end}</div>`)
+            .map((m: any) => `<div style="display:flex;justify-content:space-between;gap:10px;"><span>${m.label}</span><span style="color:#d7ccc8;">${m.start} – ${m.end}</span></div>`)
             .join("");
-          mealInfo += `<div style="font-size:${isMobile ? "12px" : "10px"};color:#aaa;margin-top:4px;line-height:1.4;">${mealsHtml}</div>`;
+          mealInfo += `<div style="font-size:${metaSize};color:#a8a29e;margin-top:8px;line-height:1.6;border-top:1px solid #3e2723;padding-top:8px;">${mealsHtml}</div>`;
         }
 
         const dPopup = new mapboxgl.Popup({
@@ -394,10 +439,10 @@ export function Map() {
           closeButton: isMobile,
           closeOnClick: false,
           className: "library-popup",
-          maxWidth: isMobile ? "280px" : "240px",
+          maxWidth: isMobile ? "280px" : "260px",
         }).setHTML(
-          `<div style="font-size:${isMobile ? "15px" : "13px"};padding:${isMobile ? "8px 10px" : "4px 6px"};">
-            <div style="font-weight:600;">${res.name}</div>
+          `<div style="padding:${popupPad};font-size:${titleSize};">
+            <div style="font-weight:600;color:#d7ccc8;">${res.name}</div>
             ${mealInfo}
           </div>`,
         );
