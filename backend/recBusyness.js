@@ -10,6 +10,36 @@ const CACHE_TTL = 7200; // 2 hours in seconds (generous buffer between hourly fe
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 
+// ── Holiday / special-date overrides (checked BEFORE seasonal schedules) ────
+// Key format: "MM-DD"  →  null = fully closed, or { open, close }
+// Update these each academic year based on uwo.ca/campusrec/schedules
+const HOLIDAY_OVERRIDES = {
+  // Good Friday — fully closed
+  "04-03": null,
+  // Easter Saturday — reduced hours
+  "04-04": { open: "9:00", close: "17:00" },
+  // Easter Sunday — reduced hours
+  "04-05": { open: "9:00", close: "17:00" },
+  // April 10 — closing early at 4PM (staff recognition event; pool at 2PM)
+  "04-10": { open: "6:30", close: "16:00" },
+  // Family Day (third Monday of Feb) — closed (Western Holiday)
+  "02-16": null,
+  // Canada Day
+  "07-01": null,
+  // Civic Holiday (first Monday of Aug) — closed (Western Holiday)
+  "08-04": null,
+  // Labour Day — open (per website), but could override if needed
+  // "09-01": { open: "9:00", close: "17:00" },
+  // Thanksgiving (second Monday of Oct) — closed (Western Holiday)
+  "10-13": null,
+  // Christmas Day
+  "12-25": null,
+  // Boxing Day
+  "12-26": null,
+  // New Year's Day
+  "01-01": null,
+};
+
 // ── Rec center operating hours (from uwo.ca/campusrec/schedules) ──────────
 // Each schedule has a date-range matcher and per-day open/close in 24h "HH:MM"
 const REC_SCHEDULES = [
@@ -108,6 +138,26 @@ function getRecStatus() {
   const day = et.getDay(); // 0=Sun
   const minutes = et.getHours() * 60 + et.getMinutes();
 
+  // Check holiday / special-date overrides first
+  const mmdd = `${String(month + 1).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+  const override = HOLIDAY_OVERRIDES[mmdd];
+  if (mmdd in HOLIDAY_OVERRIDES) {
+    // null means fully closed for the day
+    if (override === null) {
+      return { isOpen: false, todayOpen: null, todayClose: null, holiday: true };
+    }
+    // Otherwise use the override hours
+    const openMin = timeToMinutes(override.open);
+    const closeMin = timeToMinutes(override.close);
+    return {
+      isOpen: minutes >= openMin && minutes < closeMin,
+      todayOpen: formatTime12h(override.open),
+      todayClose: formatTime12h(override.close),
+      holiday: true,
+    };
+  }
+
+  // Regular seasonal schedule
   const schedule = REC_SCHEDULES.find((s) => s.match(month, date)) || {
     hours: DEFAULT_HOURS,
   };
@@ -281,7 +331,7 @@ async function refreshRecData() {
 
 // Schedule: run at minute 5 of every hour (1:05, 2:05, 3:05, ...)
 cron.schedule("5 * * * *", refreshRecData);
-// Schedule: run at minute 5 of every hour (1:20, 2:20, 3:20, ...)
+// Schedule: run at minute 20 of every hour (1:20, 2:20, 3:20, ...)
 cron.schedule("20 * * * *", refreshRecData);
 // Also fetch once on startup so there's data immediately
 refreshRecData();
